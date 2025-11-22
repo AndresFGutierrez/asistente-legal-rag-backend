@@ -14,14 +14,19 @@ logger = logging.getLogger(__name__)
 class RAGPipeline:
     def __init__(self):
         from langchain_community.embeddings import HuggingFaceEmbeddings
-        logger.info("🆓 Embeddings: HuggingFace")
+        logger.info("🆓 Embeddings: HuggingFace (ligero)")
         self.embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+            model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
         
         from transformers import pipeline
         logger.info("🆓 LLM: GPT-2 Local")
-        pipe = pipeline("text-generation", model="gpt2", max_length=200)
+        pipe = pipeline(
+            "text-generation",
+            model="gpt2",
+            max_new_tokens=150,
+            truncation=True
+        )
         self.llm = HuggingFacePipeline(pipeline=pipe)
         
         self.vector_store = None
@@ -59,9 +64,12 @@ class RAGPipeline:
         all_chunks = []
         
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=800,
-            chunk_overlap=100,
+            chunk_size=400,
+            chunk_overlap=50,
         )
+        
+        # SOLO PRIMER PDF (para ahorrar memoria)
+        pdf_paths = pdf_paths[:1]
         
         for pdf_path in pdf_paths:
             try:
@@ -99,14 +107,12 @@ class RAGPipeline:
         
         logger.info(f"✅ {len(texts)} chunks indexados")
         
-        prompt_template = """Responde basándote SOLO en el contexto.
-
-Contexto:
+        prompt_template = """Contexto:
 {context}
 
 Pregunta: {question}
 
-Respuesta:"""
+Respuesta corta:"""
 
         PROMPT = PromptTemplate(
             template=prompt_template,
@@ -117,7 +123,7 @@ Respuesta:"""
             llm=self.llm,
             chain_type="stuff",
             retriever=self.vector_store.as_retriever(
-                search_kwargs={"k": 2}
+                search_kwargs={"k": 1}
             ),
             return_source_documents=True,
             chain_type_kwargs={"prompt": PROMPT}
@@ -135,7 +141,7 @@ Respuesta:"""
             sources = []
             for doc in result["source_documents"]:
                 sources.append({
-                    "content": doc.page_content[:300],
+                    "content": doc.page_content[:200],
                     "source": doc.metadata.get("source", "?")
                 })
             
